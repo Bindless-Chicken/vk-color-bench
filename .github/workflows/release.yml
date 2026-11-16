@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to release, e.g. v0.2.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - run: rustup toolchain install stable --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with:
+          version: 1.4.309.0
+          cache: true
+
+      - name: Build
+        run: |
+          cargo fetch --locked
+          cargo xtask package --release
+
+      - name: Archive
+        run: |
+          $archive = "vk-color-bench-$env:TAG-windows-x64.zip"
+          Compress-Archive -DestinationPath $archive -Path `
+            target/release/VkLayer_bc_color_bench.dll, `
+            target/release/VK_LAYER_BC_Color_Bench.json, `
+            README.md, `
+            LICENSE
+          "ARCHIVE=$archive" >> $env:GITHUB_ENV
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create $env:TAG $env:ARCHIVE --draft --target $env:GITHUB_SHA --title "Color Bench $env:TAG" --generate-notes
